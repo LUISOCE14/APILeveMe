@@ -58,11 +58,12 @@ const start = async () => {
   try {
     await connectDB(mongo_uri);
     console.log('Conexión a la base de datos establecida');
-    if (process.env.NODE_ENV !== 'production') {
-      app.listen(port, () => {
-        console.log(`Servidor corriendo en http://localhost:${port}`);
-      });
-    }
+    
+    // Eliminar la condición y siempre iniciar el servidor HTTP
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`Servidor corriendo en http://0.0.0.0:${port}`);
+    });
+
   } catch (error) {
     console.error('Error al iniciar el servidor:', error);
     process.exit(1);
