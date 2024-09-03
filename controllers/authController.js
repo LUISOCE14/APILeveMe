@@ -2,6 +2,7 @@ import { UserModel } from "../models/User.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 
 dotenv.config({
   path: "../.env",
@@ -182,5 +183,95 @@ export const cerrarSesion = async (req, res) => {
   } catch (err) {
     console.error(err); // Only log the error for debugging, not the hashed password
     res.status(500).send("Error en el servidor");
+  }
+};
+
+export const solicitarRecuperacionContrasena = async (req, res) => {
+  const { email } = req.body;
+  const lowerCaseEmail = email.toLowerCase();
+
+  try {
+    const user = await UserModel.findOne({ email: lowerCaseEmail });
+    if (!user) {
+      return res.status(404).json({ msg: "Usuario no encontrado" });
+    }
+
+    user.generatePasswordResetToken();
+    await user.save();
+
+    // Configuración actualizada del transporter
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // true para 465, false para otros puertos
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    // Verificar la conexión
+    transporter.verify(function(error, success) {
+      if (error) {
+        console.log(error);
+      } else {
+        console.log("Servidor listo para enviar mensajes");
+      }
+    });
+
+    // Enviar el correo
+    let info = await transporter.sendMail({
+      from: `"Tu Aplicación" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: "Recuperación de contraseña",
+      text: `Tu código de recuperación es: ${user.resetPasswordToken}\nEste código expirará en 1 hora.`
+    });
+
+    console.log("Mensaje enviado: %s", info.messageId);
+
+    res.status(200).json({ msg: "Se ha enviado un correo con las instrucciones para recuperar tu contraseña" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Error en el servidor", error: err.message });
+  }
+};
+
+export const cambiarContrasena = async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    // Buscar al usuario por el token de reseteo
+    const user = await UserModel.findOne({ 
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ msg: "Token inválido o expirado" });
+    }
+
+    // Verificar que la nueva contraseña sea diferente de la actual
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({ msg: "La nueva contraseña debe ser diferente de la actual" });
+    }
+
+    // Encriptar la nueva contraseña
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Actualizar la contraseña y limpiar los campos de recuperación
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    res.status(200).json({ msg: "Contraseña actualizada correctamente" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Error en el servidor", error: err.message });
   }
 };

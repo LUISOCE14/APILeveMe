@@ -36,6 +36,8 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
 });
 
 
@@ -49,5 +51,10 @@ UserSchema.statics.agregarIntereses = async function (idUsuario, interesesIds) {
     { _id: idUsuario },
     { $push: { intereses: { $each: interesesIds } } }
   );
+};
+
+UserSchema.methods.generatePasswordResetToken = function() {
+  this.resetPasswordToken = Math.random().toString(36).slice(-8);
+  this.resetPasswordExpires = Date.now() + 3600000; // 1 hour
 };
 export const UserModel = mongoose.model("User", UserSchema);
